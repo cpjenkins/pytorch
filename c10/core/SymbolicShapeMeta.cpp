@@ -59,7 +59,7 @@ SymBool SymbolicShapeMeta::compute_contiguous() const {
   }
   c10::SymIntArrayRef sizes(sizes_);
   c10::SymIntArrayRef strides(strides_);
-  return _compute_contiguous(sizes, strides, numel_);
+  return _compute_contiguous(sizes, strides, numel());
 }
 
 // The rest of them
@@ -114,57 +114,57 @@ static bool definitely_true(const SymBool& b) {
 }
 
 SymBool SymbolicShapeMeta::compute_is_non_overlapping_and_dense_dim4() const {
-  if (definitely_true(is_contiguous_)) {
+  if (definitely_true(is_contiguous())) {
     return true;
   }
-  if (definitely_true(is_channels_last_contiguous_)) {
+  if (definitely_true(is_channels_last_contiguous())) {
     return true;
   }
-  return is_contiguous_ | is_channels_last_contiguous_ |
+  return is_contiguous() | is_channels_last_contiguous() |
       compute_non_overlapping_and_dense();
 }
 
 SymBool SymbolicShapeMeta::compute_channels_last_contiguous_3d_dim5() const {
-  if (definitely_true(is_channels_last_contiguous_)) {
+  if (definitely_true(is_channels_last_contiguous())) {
     return false;
   }
-  return ~is_channels_last_contiguous_ & compute_channels_last_contiguous_3d();
+  return ~is_channels_last_contiguous() & compute_channels_last_contiguous_3d();
 }
 
 SymBool SymbolicShapeMeta::compute_channels_last_2d_dim5() const {
-  if (definitely_true(is_channels_last_3d_contiguous_)) {
+  if (definitely_true(is_channels_last_3d_contiguous())) {
     return false;
   }
-  return ~is_channels_last_3d_contiguous_ &
+  return ~is_channels_last_3d_contiguous() &
       compute_strides_like_channels_last_2d();
 }
 
 SymBool SymbolicShapeMeta::compute_channels_last_3d_dim5() const {
-  if (definitely_true(is_channels_last_)) {
+  if (definitely_true(is_channels_last())) {
     return false;
   }
-  return ~is_channels_last_ & compute_strides_like_channels_last_3d();
+  return ~is_channels_last() & compute_strides_like_channels_last_3d();
 }
 
 SymBool SymbolicShapeMeta::compute_is_non_overlapping_and_dense_dim5() const {
-  if (definitely_true(is_contiguous_)) {
+  if (definitely_true(is_contiguous())) {
     return true;
   }
-  if (definitely_true(is_channels_last_contiguous_)) {
+  if (definitely_true(is_channels_last_contiguous())) {
     return true;
   }
-  if (definitely_true(is_channels_last_3d_contiguous_)) {
+  if (definitely_true(is_channels_last_3d_contiguous())) {
     return true;
   }
-  return is_contiguous_ | is_channels_last_contiguous_ |
-      is_channels_last_3d_contiguous_ | compute_non_overlapping_and_dense();
+  return is_contiguous() | is_channels_last_contiguous() |
+      is_channels_last_3d_contiguous() | compute_non_overlapping_and_dense();
 }
 
 SymBool SymbolicShapeMeta::compute_is_non_overlapping_and_dense_anydim() const {
-  if (definitely_true(is_contiguous_)) {
+  if (definitely_true(is_contiguous())) {
     return true;
   }
-  return is_contiguous_ | compute_non_overlapping_and_dense();
+  return is_contiguous() | compute_non_overlapping_and_dense();
 }
 
 } // namespace c10
