@@ -333,7 +333,6 @@ def generic_jump(truth_fn: typing.Callable[[object], bool], push: bool):
                 self,
                 scalar_to_tensor_proxy,
                 example_value=get_fake_value(scalar_to_tensor_proxy.node, self),
-                **VariableTracker.propagate([value]),
             )
 
             self.output.create_proxy(
@@ -1123,9 +1122,6 @@ class InstructionTranslatorBase(Checkpointable[InstructionTranslatorGraphState])
 
     def COMPARE_OP(self, inst):
         left, right = self.popn(2)
-        left = left
-        right = right
-        options = VariableTracker.propagate([left, right])
         op = inst.argval
         supported_any = dict(
             itertools.chain(
@@ -1153,7 +1149,7 @@ class InstructionTranslatorBase(Checkpointable[InstructionTranslatorGraphState])
             # <non-None> is None
             self.push(
                 ConstantVariable.create(
-                    supported_const_comparison_ops[op](object(), right.value), **options
+                    supported_const_comparison_ops[op](object(), right.value)
                 )
             )
 
@@ -1168,7 +1164,6 @@ class InstructionTranslatorBase(Checkpointable[InstructionTranslatorGraphState])
                     supported_any[op](
                         left.as_python_constant(), right.as_python_constant()
                     ),
-                    **options,
                 )
             )
         elif op in ("in", "not in"):
@@ -1177,7 +1172,7 @@ class InstructionTranslatorBase(Checkpointable[InstructionTranslatorGraphState])
                 self.UNARY_NOT(inst)
         else:
             self.push(
-                BuiltinVariable(supported_any[op], **options).call_function(
+                BuiltinVariable(supported_any[op]).call_function(
                     self, [left, right], {}
                 )
             )
@@ -1342,42 +1337,32 @@ class InstructionTranslatorBase(Checkpointable[InstructionTranslatorGraphState])
 
     def BUILD_TUPLE(self, inst):
         items = self.popn(inst.argval)
-        options = VariableTracker.propagate(items)
-        self.push(TupleVariable(items, **options))
+        self.push(TupleVariable(items))
 
     def BUILD_SLICE(self, inst):
         items = self.popn(inst.argval)
-        options = VariableTracker.propagate(items)
-        self.push(
-            SliceVariable(
-                items,
-                **options,
-            )
-        )
+        self.push(SliceVariable(items))
 
     def BUILD_LIST(self, inst):
         items = self.popn(inst.argval)
-        options = VariableTracker.propagate(items)
-        self.push(ListVariable(items, mutable_local=MutableLocal(), **options))
+        self.push(ListVariable(items, mutable_local=MutableLocal()))
 
     def BUILD_SET(self, inst):
         if config.inject_BUILD_SET_unimplemented_TESTING_ONLY:
             unimplemented("missing: BUILD_SET")
         items = self.popn(inst.argval)
-        options = VariableTracker.propagate(items)
-        new_set = SetVariable(items, mutable_local=MutableLocal(), **options)
+        new_set = SetVariable(items, mutable_local=MutableLocal())
         self.push(new_set)
 
     def BUILD_LIST_UNPACK(self, inst, cls=ListVariable):
         seqs = self.popn(inst.argval)
-        options = VariableTracker.propagate(seqs)
         items = list()
         for seq in seqs:
             try:
                 items.extend(seq.unpack_var_sequence(self))
             except NotImplementedError:
                 unimplemented(f"BUILD_LIST_UNPACK {seq}")
-        self.push(cls(items, mutable_local=MutableLocal(), **options))
+        self.push(cls(items, mutable_local=MutableLocal()))
 
     def BUILD_TUPLE_UNPACK(self, inst):
         self.BUILD_LIST_UNPACK(inst, cls=TupleVariable)
@@ -1386,7 +1371,6 @@ class InstructionTranslatorBase(Checkpointable[InstructionTranslatorGraphState])
 
     def BUILD_MAP(self, inst):
         items = self.popn(inst.argval * 2)
-        options = VariableTracker.propagate(items)
         result = dict()
         for k, v in zip(items[::2], items[1::2]):
             assert (
@@ -1397,9 +1381,7 @@ class InstructionTranslatorBase(Checkpointable[InstructionTranslatorGraphState])
 
             result[ConstDictVariable.get_key(k)] = v
         assert len(result) == len(items) / 2
-        self.push(
-            ConstDictVariable(result, dict, mutable_local=MutableLocal(), **options)
-        )
+        self.push(ConstDictVariable(result, dict, mutable_local=MutableLocal()))
 
     def BUILD_MAP_UNPACK(self, inst):
         items = self.popn(inst.argval)
@@ -1414,7 +1396,6 @@ class InstructionTranslatorBase(Checkpointable[InstructionTranslatorGraphState])
                 result,
                 dict,
                 mutable_local=MutableLocal(),
-                **VariableTracker.propagate(items),
             )
         )
 
@@ -1423,7 +1404,6 @@ class InstructionTranslatorBase(Checkpointable[InstructionTranslatorGraphState])
     def BUILD_CONST_KEY_MAP(self, inst):
         keys = self.pop()
         values = self.popn(inst.argval)
-        options = VariableTracker.propagate([keys] + values)
         assert isinstance(keys, TupleVariable)
         assert keys.is_python_constant()
         keys = keys.as_python_constant()
@@ -1434,7 +1414,6 @@ class InstructionTranslatorBase(Checkpointable[InstructionTranslatorGraphState])
                 dict(zip(keys, values)),
                 dict,
                 mutable_local=MutableLocal(),
-                **options,
             )
         )
 
@@ -1451,7 +1430,6 @@ class InstructionTranslatorBase(Checkpointable[InstructionTranslatorGraphState])
             ConstDictVariable(
                 items,
                 obj.user_cls,
-                **VariableTracker.propagate([obj, k, v]),
             ),
         )
 
@@ -1473,7 +1451,6 @@ class InstructionTranslatorBase(Checkpointable[InstructionTranslatorGraphState])
             obj,
             ListVariable(
                 obj.items + [v],
-                **VariableTracker.propagate([obj, v]),
             ),
         )
 
@@ -1502,7 +1479,6 @@ class InstructionTranslatorBase(Checkpointable[InstructionTranslatorGraphState])
         if flags & 0x01:
             defaults = self.pop()
 
-        options = VariableTracker.propagate(old_stack[len(self.stack) :])
         self.push(
             NestedUserFunctionVariable(
                 fn_name,
@@ -1513,7 +1489,6 @@ class InstructionTranslatorBase(Checkpointable[InstructionTranslatorGraphState])
                 annotations,
                 closure,
                 closure_scope=self,
-                **options,
             )
         )
 
@@ -1528,8 +1503,7 @@ class InstructionTranslatorBase(Checkpointable[InstructionTranslatorGraphState])
         elif isinstance(seq, GetAttrVariable) and isinstance(seq.obj, TensorVariable):
             # x, y = a.shape
             proxy = getattr(seq.obj.as_proxy(), seq.name)
-            options = VariableTracker.propagate(self)
-            val = [wrap_fx_proxy(self, proxy[i], **options) for i in range(inst.argval)]
+            val = [wrap_fx_proxy(self, proxy[i]) for i in range(inst.argval)]
         else:
             unimplemented(f"UNPACK_SEQUENCE {seq}")
         assert len(val) == inst.argval
@@ -1541,7 +1515,6 @@ class InstructionTranslatorBase(Checkpointable[InstructionTranslatorGraphState])
         prefix = inst.argval & 0xFF  # low byte
         suffix = inst.argval >> 8  # high byte
         seq = self.pop()
-        options = VariableTracker.propagate(seq)
         if seq.has_unpack_var_sequence(self):
             vals = list(seq.unpack_var_sequence(self))
             assert len(vals) >= prefix + suffix
@@ -1550,7 +1523,7 @@ class InstructionTranslatorBase(Checkpointable[InstructionTranslatorGraphState])
             vals_suffix = vals[len(vals) - suffix :]
             for item in reversed(vals_suffix):
                 self.push(item)
-            self.push(TupleVariable(vals_list, **options))
+            self.push(TupleVariable(vals_list))
             for item in reversed(vals_prefix):
                 self.push(item)
         else:
@@ -1835,7 +1808,6 @@ class InstructionTranslatorBase(Checkpointable[InstructionTranslatorGraphState])
         exit = WithExitFunctionVariable(
             ctx,
             inst.target,
-            **VariableTracker.propagate(ctx),
         )
         if sys.version_info >= (3, 11):
             # see create_call_resume_at for block stack details
@@ -2408,7 +2380,6 @@ class InliningInstructionTranslator(InstructionTranslatorBase):
             return ListIteratorVariable(
                 tracer.generated_items,
                 mutable_local=MutableLocal(),
-                **VariableTracker.propagate(tracer.symbolic_result),
             )
         else:
             return tracer.symbolic_result
